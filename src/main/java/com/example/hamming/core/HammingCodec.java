@@ -3,8 +3,7 @@ package com.example.hamming.core;
 public class HammingCodec {
 
     /**
-     * Metoda do zakodowania wiadomości 16-bitowej.
-     * (zostanie zaimplementowana w kolejnym commicie)
+     * Metoda do zakodowania wiadomości 16-bitowej
      */
     public int[] encode(short data) {
         return new int[0];
