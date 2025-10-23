@@ -16,5 +16,14 @@ public class MainApp extends Application {
         stage.setTitle("Hamming Net");
         stage.setScene(scene);
         stage.show();
+        var centerInfo = new Label("• 8 nodes (TCP)\n• Supervisor sending 16-bit values (Hamming)\n• Fault injection via GUI");
+        root.setCenter(centerInfo);
+
+        var status = new Label("Status: ready");
+        root.setBottom(status);
+
+    }
+    public static void main(String[] args) {
+        launch(args);
     }
 }
