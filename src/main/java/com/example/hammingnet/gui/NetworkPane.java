@@ -4,19 +4,20 @@ import com.example.hammingnet.core.BitVector;
 import com.example.hammingnet.core.ErrorType;
 import com.example.hammingnet.net.Graph;
 import com.example.hammingnet.net.NodeServer;
+import com.example.hammingnet.net.Supervisor;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 
-/* Panel sieci — uruchamianie 8 węzłów, podgląd zdarzeń;  bez wysyłania ramek. */
+/* Panel sieci — z obsługą wysyłki ramek przez Supervisor. */
 public class NetworkPane extends BorderPane {
 
     // Górny pasek: Start/Stop
     private final Button btnStart = new Button("Uruchom 8 węzłów");
     private final Button btnStop  = new Button("Zatrzymaj");
 
-    // Lewy panel: przygotowanie wysyłki
+    // Lewy panel: pola wysyłki
     private final ComboBox<Integer> cbEntry = new ComboBox<>();
     private final ComboBox<Integer> cbDst   = new ComboBox<>();
     private final TextField tfValue16 = new TextField();
@@ -28,11 +29,11 @@ public class NetworkPane extends BorderPane {
     private final Button btnSendProb  = new Button("Wyślij (z prawdopodobieństwem)");
     private final Button btnSendRand  = new Button("Wyślij losową");
 
-    // Prawy panel: dziennik
+    // Dziennik
     private final TextArea log = new TextArea();
     private final Button btnClearLog = new Button("Wyczyść dziennik");
 
-    // Backend sieci
+    // Backend
     private final Graph graph = new Graph();
     private final NodeServer[] nodes = new NodeServer[Graph.NODES];
     private boolean running = false;
@@ -41,17 +42,23 @@ public class NetworkPane extends BorderPane {
         setPadding(new Insets(12));
         buildUi();
 
-        // Handlery Start/Stop + dziennik
+        // Start/Stop + dziennik
         btnStart.setOnAction(e -> startAll());
         btnStop.setOnAction(e -> stopAll());
         btnClearLog.setOnAction(e -> log.clear());
 
-        // Wypełnij listy wyboru
+        // Listy wyboru
         for (int i = 0; i < Graph.NODES; i++) { cbEntry.getItems().add(i); cbDst.getItems().add(i); }
         cbEntry.getSelectionModel().select(0);
         cbDst.getSelectionModel().select(4);
         cbError.getItems().addAll(ErrorType.values());
         cbError.getSelectionModel().selectFirst();
+
+        // Akcje wysyłki
+        btnSendNoErr.setOnAction(e -> doSendNoErr());
+        btnSendErr.setOnAction(e -> doSendErr());
+        btnSendProb.setOnAction(e -> doSendProb());
+        btnSendRand.setOnAction(e -> doSendRand());
 
         btnStop.setDisable(true);
         setSendControlsDisabled(true);
@@ -108,8 +115,7 @@ public class NetworkPane extends BorderPane {
         running = true;
         btnStart.setDisable(true);
         btnStop.setDisable(false);
-        // wysyłka odblokowana dopiero w kolejnym commicie
-        setSendControlsDisabled(true);
+        setSendControlsDisabled(false);
         appendLog("Uruchomiono wszystkie węzły.");
     }
 
@@ -126,13 +132,6 @@ public class NetworkPane extends BorderPane {
         appendLog("Zatrzymano wszystkie węzły.");
     }
 
-    private void appendLog(String line) {
-        Platform.runLater(() -> {
-            log.appendText(line + System.lineSeparator());
-            log.positionCaret(log.getText().length());
-        });
-    }
-
     private void setSendControlsDisabled(boolean b) {
         cbEntry.setDisable(b);
         cbDst.setDisable(b);
@@ -143,5 +142,82 @@ public class NetworkPane extends BorderPane {
         btnSendErr.setDisable(b);
         btnSendProb.setDisable(b);
         btnSendRand.setDisable(b);
+    }
+
+    private void appendLog(String line) {
+        Platform.runLater(() -> {
+            log.appendText(line + System.lineSeparator());
+            log.positionCaret(log.getText().length());
+        });
+    }
+
+    // --- Wysyłka ---
+
+    private Integer parse16(String txt) {
+        if (txt == null) return null;
+        txt = txt.trim();
+        try {
+            int v;
+            if (txt.startsWith("0x") || txt.startsWith("0X")) v = Integer.parseUnsignedInt(txt.substring(2), 16);
+            else v = Integer.parseInt(txt);
+            return ((v & ~0xFFFF) == 0) ? v : null;
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private double parseProb(String txt) {
+        try {
+            double p = Double.parseDouble(txt.trim());
+            if (p < 0 || p > 1) throw new IllegalArgumentException();
+            return p;
+        } catch (Exception ex) {
+            return Double.NaN;
+        }
+    }
+
+    private NodeServer entryNode() { return nodes[cbEntry.getValue()]; }
+    private int dstId() { return cbDst.getValue(); }
+
+    private void doSendNoErr() {
+        var v = parse16(tfValue16.getText());
+        if (v == null) { appendLog("Błędna wartość 16-bit."); return; }
+        var entry = entryNode();
+        if (entry == null) { appendLog("Węzeł wejściowy nie działa."); return; }
+        var sup = new Supervisor(entry);
+        sup.sendValueNoErrors(dstId(), v);
+        appendLog(String.format("Wysłano (bez usterek): entry=%d dst=%d val=0x%04X", entry.id(), dstId(), v));
+    }
+
+    private void doSendErr() {
+        var v = parse16(tfValue16.getText());
+        if (v == null) { appendLog("Błędna wartość 16-bit."); return; }
+        var entry = entryNode();
+        if (entry == null) { appendLog("Węzeł wejściowy nie działa."); return; }
+        var sup = new Supervisor(entry);
+        sup.sendValueWithError(dstId(), v, cbError.getValue());
+        appendLog(String.format("Wysłano (z usterką %s): entry=%d dst=%d val=0x%04X",
+                cbError.getValue(), entry.id(), dstId(), v));
+    }
+
+    private void doSendProb() {
+        var v = parse16(tfValue16.getText());
+        if (v == null) { appendLog("Błędna wartość 16-bit."); return; }
+        double p = parseProb(tfProb.getText());
+        if (Double.isNaN(p)) { appendLog("Błędne p — podaj z zakresu 0..1."); return; }
+        var entry = entryNode();
+        if (entry == null) { appendLog("Węzeł wejściowy nie działa."); return; }
+        var sup = new Supervisor(entry);
+        sup.sendValueMaybeError(dstId(), v, cbError.getValue(), p);
+        appendLog(String.format("Wysłano (p=%.3f, usterka %s): entry=%d dst=%d val=0x%04X",
+                p, cbError.getValue(), entry.id(), dstId(), v));
+    }
+
+    private void doSendRand() {
+        var entry = entryNode();
+        if (entry == null) { appendLog("Węzeł wejściowy nie działa."); return; }
+        var sup = new Supervisor(entry);
+        sup.sendRandom(dstId());
+        appendLog(String.format("Wysłano losową wartość: entry=%d dst=%d", entry.id(), dstId()));
     }
 }
