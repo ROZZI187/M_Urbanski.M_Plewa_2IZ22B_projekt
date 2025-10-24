@@ -79,7 +79,7 @@ public class NodeServer implements AutoCloseable {
             int v = ((buf[2] & 0xFF)) | ((buf[3] & 0xFF) << 8) | ((buf[4] & 0xFF) << 16);
             BitVector payload = BitVector.fromInt(v, 21);
 
-            // Komentarz PL: wstrzyknięcie usterek NA WEJŚCIU do węzła (symulacja usterek elementu).
+            // wstrzyknięcie usterek NA WEJŚCIU do węzła (symulacja usterek elementu).
             var cfg = faultConfig; // volatile → bezpieczny snapshot
             if (cfg != null) cfg.apply(payload, injector);
 
@@ -89,7 +89,7 @@ public class NodeServer implements AutoCloseable {
             if (dst != id) {
                 int next = chooseNextHop(dst);
                 if (next >= 0) {
-                    // Komentarz PL: serializacja po ewentualnych usterkach
+                    //  serializacja po ewentualnych usterkach
                     byte[] outMsg = new byte[5];
                     outMsg[0] = (byte) (src & 0xFF);
                     outMsg[1] = (byte) (dst & 0xFF);
