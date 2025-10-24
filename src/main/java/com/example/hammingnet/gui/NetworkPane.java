@@ -10,14 +10,12 @@ import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 
-/* Panel sieci — z obsługą wysyłki ramek przez Supervisor. */
+/* Panel sieci — dopieszczony UI (monospace log, podpowiedzi, komunikaty). */
 public class NetworkPane extends BorderPane {
 
-    // Górny pasek: Start/Stop
     private final Button btnStart = new Button("Uruchom 8 węzłów");
     private final Button btnStop  = new Button("Zatrzymaj");
 
-    // Lewy panel: pola wysyłki
     private final ComboBox<Integer> cbEntry = new ComboBox<>();
     private final ComboBox<Integer> cbDst   = new ComboBox<>();
     private final TextField tfValue16 = new TextField();
@@ -29,11 +27,9 @@ public class NetworkPane extends BorderPane {
     private final Button btnSendProb  = new Button("Wyślij (z prawdopodobieństwem)");
     private final Button btnSendRand  = new Button("Wyślij losową");
 
-    // Dziennik
     private final TextArea log = new TextArea();
     private final Button btnClearLog = new Button("Wyczyść dziennik");
 
-    // Backend
     private final Graph graph = new Graph();
     private final NodeServer[] nodes = new NodeServer[Graph.NODES];
     private boolean running = false;
@@ -42,26 +38,31 @@ public class NetworkPane extends BorderPane {
         setPadding(new Insets(12));
         buildUi();
 
-        // Start/Stop + dziennik
         btnStart.setOnAction(e -> startAll());
         btnStop.setOnAction(e -> stopAll());
         btnClearLog.setOnAction(e -> log.clear());
 
-        // Listy wyboru
         for (int i = 0; i < Graph.NODES; i++) { cbEntry.getItems().add(i); cbDst.getItems().add(i); }
         cbEntry.getSelectionModel().select(0);
         cbDst.getSelectionModel().select(4);
         cbError.getItems().addAll(ErrorType.values());
         cbError.getSelectionModel().selectFirst();
 
-        // Akcje wysyłki
+        // Polish UI
+        log.setEditable(false);
+        log.setPrefColumnCount(60);
+        log.setPrefRowCount(26);
+        log.setStyle("-fx-font-family: 'Consolas','Courier New',monospace; -fx-font-size: 12px;");
+        tfValue16.setPromptText("np. 0xBEEF lub 48879");
+        tfProb.setPromptText("0..1");
+
+        btnStop.setDisable(true);
+        setSendControlsDisabled(true);
+
         btnSendNoErr.setOnAction(e -> doSendNoErr());
         btnSendErr.setOnAction(e -> doSendErr());
         btnSendProb.setOnAction(e -> doSendProb());
         btnSendRand.setOnAction(e -> doSendRand());
-
-        btnStop.setDisable(true);
-        setSendControlsDisabled(true);
     }
 
     private void buildUi() {
@@ -84,15 +85,12 @@ public class NetworkPane extends BorderPane {
         left.setPadding(new Insets(0, 12, 0, 0));
         setLeft(left);
 
-        log.setEditable(false);
-        log.setPrefColumnCount(60);
-        log.setPrefRowCount(26);
         var right = new VBox(8, new Label("Dziennik zdarzeń:"), log, btnClearLog);
         setCenter(right);
     }
 
     private void startAll() {
-        if (running) return;
+        if (running) { appendLog("Węzły już działają."); return; }
         for (int i = 0; i < Graph.NODES; i++) {
             final int id = i;
             nodes[i] = new NodeServer(id, graph);
@@ -120,7 +118,7 @@ public class NetworkPane extends BorderPane {
     }
 
     private void stopAll() {
-        if (!running) return;
+        if (!running) { appendLog("Węzły już zatrzymane."); return; }
         for (int i = 0; i < Graph.NODES; i++) {
             try { if (nodes[i] != null) nodes[i].close(); } catch (Exception ignored) {}
             nodes[i] = null;
@@ -151,7 +149,7 @@ public class NetworkPane extends BorderPane {
         });
     }
 
-    // --- Wysyłka ---
+    // --- Wysyłka i pomocnicze ---
 
     private Integer parse16(String txt) {
         if (txt == null) return null;
@@ -181,7 +179,7 @@ public class NetworkPane extends BorderPane {
 
     private void doSendNoErr() {
         var v = parse16(tfValue16.getText());
-        if (v == null) { appendLog("Błędna wartość 16-bit."); return; }
+        if (v == null) { appendLog("Błędna wartość 16-bit (np. 0xBEEF lub 48879)."); return; }
         var entry = entryNode();
         if (entry == null) { appendLog("Węzeł wejściowy nie działa."); return; }
         var sup = new Supervisor(entry);
@@ -191,7 +189,7 @@ public class NetworkPane extends BorderPane {
 
     private void doSendErr() {
         var v = parse16(tfValue16.getText());
-        if (v == null) { appendLog("Błędna wartość 16-bit."); return; }
+        if (v == null) { appendLog("Błędna wartość 16-bit (np. 0xBEEF lub 48879)."); return; }
         var entry = entryNode();
         if (entry == null) { appendLog("Węzeł wejściowy nie działa."); return; }
         var sup = new Supervisor(entry);
@@ -202,9 +200,9 @@ public class NetworkPane extends BorderPane {
 
     private void doSendProb() {
         var v = parse16(tfValue16.getText());
-        if (v == null) { appendLog("Błędna wartość 16-bit."); return; }
+        if (v == null) { appendLog("Błędna wartość 16-bit (np. 0xBEEF lub 48879)."); return; }
         double p = parseProb(tfProb.getText());
-        if (Double.isNaN(p)) { appendLog("Błędne p — podaj z zakresu 0..1."); return; }
+        if (Double.isNaN(p)) { appendLog("Błędne p — podaj liczbę z zakresu 0..1."); return; }
         var entry = entryNode();
         if (entry == null) { appendLog("Węzeł wejściowy nie działa."); return; }
         var sup = new Supervisor(entry);
