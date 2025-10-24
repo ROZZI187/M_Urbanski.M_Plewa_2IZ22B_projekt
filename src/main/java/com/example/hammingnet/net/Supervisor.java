@@ -18,37 +18,48 @@ public final class Supervisor {
         this(entryNode, System.nanoTime());
     }
 
-    /* wariant z seedem dla powtarzalności testów. */
     public Supervisor(NodeServer entryNode, long seed) {
         this.entryNode = Objects.requireNonNull(entryNode, "entryNode");
         this.injector = new ErrorInjector(seed);
         this.rnd = new Random(seed);
     }
 
-    /* wstrzykuje błąd z prawdopodobieństwem p (0..1). */
-    public void sendValueMaybeError(int dstId, int value16, ErrorType type, double p) {
+    /* pomocniczo – dba o zakres identyfikatora i wartości. */
+    private void checkDst(int dstId) {
+        if (dstId < 0 || dstId >= Graph.NODES) throw new IllegalArgumentException("dstId out of range: " + dstId);
+    }
+
+    /* koduje i wysyła bez usterek (z walidacją). */
+    public void sendValueNoErrors(int dstId, int value16) {
+        checkDst(dstId);
         int v = value16 & 0xFFFF;
         BitVector frame21 = hamming.encode16to21(v);
-        injector.injectWithProbability(frame21, type, p);
         entryNode.sendFrame(dstId, frame21);
     }
 
-    /* wysyła losową wartość 16-bit bez usterek. */
-    public void sendRandom(int dstId) {
-        int value = rnd.nextInt(1 << 16);
-        sendValueNoErrors(dstId, value);
-    }
-
+    /* koduje, wstrzykuje konkretny błąd i wysyła (z walidacją). */
     public void sendValueWithError(int dstId, int value16, ErrorType type) {
+        checkDst(dstId);
         int v = value16 & 0xFFFF;
         BitVector frame21 = hamming.encode16to21(v);
         injector.inject(frame21, type);
         entryNode.sendFrame(dstId, frame21);
     }
 
-    public void sendValueNoErrors(int dstId, int value16) {
+    /* wstrzykuje błąd z prawdopodobieństwem p (0..1). */
+    public void sendValueMaybeError(int dstId, int value16, ErrorType type, double p) {
+        checkDst(dstId);
+        if (p < 0 || p > 1) throw new IllegalArgumentException("p must be in [0,1]");
         int v = value16 & 0xFFFF;
         BitVector frame21 = hamming.encode16to21(v);
+        injector.injectWithProbability(frame21, type, p);
         entryNode.sendFrame(dstId, frame21);
+    }
+
+    /* losowa wartość 16-bit – szybki test ścieżki. */
+    public void sendRandom(int dstId) {
+        checkDst(dstId);
+        int value = rnd.nextInt(1 << 16);
+        sendValueNoErrors(dstId, value);
     }
 }
