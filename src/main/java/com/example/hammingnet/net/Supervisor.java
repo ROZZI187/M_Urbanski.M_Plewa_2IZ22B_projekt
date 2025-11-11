@@ -30,36 +30,47 @@ public final class Supervisor {
     }
 
     /* koduje i wysyła bez usterek (z walidacją). */
-    public void sendValueNoErrors(int dstId, int value16) {
+    public boolean sendValueNoErrors(int dstId, int value16) {
         checkDst(dstId);
         int v = value16 & 0xFFFF;
         BitVector frame21 = hamming.encode16to21(v);
         entryNode.sendFrame(dstId, frame21);
+        return true;
     }
 
     /* koduje, wstrzykuje konkretny błąd i wysyła (z walidacją). */
-    public void sendValueWithError(int dstId, int value16, ErrorType type) {
+    public boolean sendValueWithError(int dstId, int value16, ErrorType type) {
         checkDst(dstId);
         int v = value16 & 0xFFFF;
         BitVector frame21 = hamming.encode16to21(v);
-        injector.inject(frame21, type);
+        try {
+            injector.inject(frame21, type);
+        } catch (RuntimeException drop) {
+            return false;
+        }
         entryNode.sendFrame(dstId, frame21);
+        return true;
     }
 
     /* wstrzykuje błąd z prawdopodobieństwem p (0..1). */
-    public void sendValueMaybeError(int dstId, int value16, ErrorType type, double p) {
+    public boolean sendValueMaybeError(int dstId, int value16, ErrorType type, double p) {
         checkDst(dstId);
         if (p < 0 || p > 1) throw new IllegalArgumentException("p must be in [0,1]");
         int v = value16 & 0xFFFF;
         BitVector frame21 = hamming.encode16to21(v);
-        injector.injectWithProbability(frame21, type, p);
+        try {
+            injector.injectWithProbability(frame21, type, p);
+        } catch (RuntimeException drop) {
+            return false;
+        }
         entryNode.sendFrame(dstId, frame21);
+        return true;
     }
 
     /* losowa wartość 16-bit – szybki test ścieżki. */
-    public void sendRandom(int dstId) {
+    public boolean sendRandom(int dstId) {
         checkDst(dstId);
         int value = rnd.nextInt(1 << 16);
-        sendValueNoErrors(dstId, value);
+        return sendValueNoErrors(dstId, value);
     }
 }

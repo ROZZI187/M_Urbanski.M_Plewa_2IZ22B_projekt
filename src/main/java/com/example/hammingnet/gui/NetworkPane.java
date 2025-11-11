@@ -104,6 +104,7 @@ public class NetworkPane extends BorderPane {
 
     private void startAll() {
         if (running) { appendLog("Węzły już działają."); return; }
+        appendLog("Porty węzłów: " + portMap());
         for (int i = 0; i < Graph.NODES; i++) {
             final int id = i;
             nodes[i] = new NodeServer(id, graph);
@@ -119,7 +120,7 @@ public class NetworkPane extends BorderPane {
                     decoderPane.acceptDelivery(nodeId, srcId, payload21);
                 }
                 @Override public void onError(int nodeId, String message, Exception ex) {
-                    appendLog(String.format("Węzeł %d — BŁĄD: %s (%s)", nodeId, message, ex != null ? ex.getMessage() : ""));
+                    appendLog(String.format("Węzeł %d — BŁĄD: %s%s", nodeId, message, ex != null ? " (" + ex.getMessage() + ")" : ""));
                 }
             });
             nodes[i].start();
@@ -128,15 +129,16 @@ public class NetworkPane extends BorderPane {
         btnStart.setDisable(true);
         btnStop.setDisable(false);
         setSendControlsDisabled(false);
-
-        StringBuilder sb = new StringBuilder("Porty węzłów: ");
-        for (int i = 0; i < Graph.NODES; i++) {
-            sb.append(i).append("→").append(graph.port(i));
-            if (i < Graph.NODES - 1) sb.append(", ");
-        }
-        appendLog(sb.toString());
-
         appendLog("Uruchomiono wszystkie węzły.");
+    }
+
+    private String portMap() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < Graph.NODES; i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(i).append("→").append(graph.port(i));
+        }
+        return sb.toString();
     }
 
     private void stopAll() {
@@ -199,8 +201,10 @@ public class NetworkPane extends BorderPane {
         var entry = entryNode();
         if (entry == null) { appendLog("Węzeł wejściowy nie działa."); return; }
         var sup = new Supervisor(entry);
-        sup.sendValueNoErrors(dstId(), v);
-        appendLog(String.format("Wysłano (bez usterek): entry=%d dst=%d val=0x%04X", entry.id(), dstId(), v));
+        boolean sent = sup.sendValueNoErrors(dstId(), v);
+        if (sent) {
+            appendLog(String.format("Wysłano (bez usterek): entry=%d dst=%d val=0x%04X", entry.id(), dstId(), v));
+        }
     }
 
     private void doSendErr() {
@@ -209,7 +213,12 @@ public class NetworkPane extends BorderPane {
         var entry = entryNode();
         if (entry == null) { appendLog("Węzeł wejściowy nie działa."); return; }
         var sup = new Supervisor(entry);
-        sup.sendValueWithError(dstId(), v, cbError.getValue());
+        boolean sent = sup.sendValueWithError(dstId(), v, cbError.getValue());
+        if (!sent && cbError.getValue() == ErrorType.DROP_PACKET) {
+            appendLog(String.format("Pakiet porzucony u źródła (DROP_PACKET): entry=%d dst=%d val=0x%04X",
+                    entry.id(), dstId(), v));
+            return;
+        }
         appendLog(String.format("Wysłano (z usterką %s): entry=%d dst=%d val=0x%04X",
                 cbError.getValue(), entry.id(), dstId(), v));
     }
@@ -222,7 +231,12 @@ public class NetworkPane extends BorderPane {
         var entry = entryNode();
         if (entry == null) { appendLog("Węzeł wejściowy nie działa."); return; }
         var sup = new Supervisor(entry);
-        sup.sendValueMaybeError(dstId(), v, cbError.getValue(), p);
+        boolean sent = sup.sendValueMaybeError(dstId(), v, cbError.getValue(), p);
+        if (!sent && cbError.getValue() == ErrorType.DROP_PACKET) {
+            appendLog(String.format("Pakiet porzucony u źródła (DROP_PACKET, p=%.3f): entry=%d dst=%d val=0x%04X",
+                    p, entry.id(), dstId(), v));
+            return;
+        }
         appendLog(String.format("Wysłano (p=%.3f, usterka %s): entry=%d dst=%d val=0x%04X",
                 p, cbError.getValue(), entry.id(), dstId(), v));
     }
@@ -231,7 +245,9 @@ public class NetworkPane extends BorderPane {
         var entry = entryNode();
         if (entry == null) { appendLog("Węzeł wejściowy nie działa."); return; }
         var sup = new Supervisor(entry);
-        sup.sendRandom(dstId());
-        appendLog(String.format("Wysłano losową wartość: entry=%d dst=%d", entry.id(), dstId()));
+        boolean sent = sup.sendRandom(dstId());
+        if (sent) {
+            appendLog(String.format("Wysłano losową wartość: entry=%d dst=%d", entry.id(), dstId()));
+        }
     }
 }

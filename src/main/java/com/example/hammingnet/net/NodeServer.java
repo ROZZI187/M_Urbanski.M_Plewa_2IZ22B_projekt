@@ -114,7 +114,14 @@ public class NodeServer implements AutoCloseable {
 
             // wstrzyknięcie usterek NA WEJŚCIU do węzła (symulacja usterek elementu).
             var cfg = faultConfig; // volatile → bezpieczny snapshot
-            if (cfg != null) cfg.apply(payload, injector);
+            if (cfg != null) {
+                try {
+                    cfg.apply(payload, injector);
+                } catch (RuntimeException drop) {
+                    fireError("packet dropped at node " + id, null);
+                    return;
+                }
+            }
 
             var l = listener;
             if (l != null) l.onReceived(id, src, dst, payload);
