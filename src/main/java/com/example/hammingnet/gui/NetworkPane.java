@@ -10,7 +10,7 @@ import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 
-/* Panel sieci — dopieszczony UI (monospace log, podpowiedzi, komunikaty). */
+/* Panel sieci - zintegrowany z dekoderem: trzecia zakładka, przekazujemy onDelivered do DecoderPane. */
 public class NetworkPane extends BorderPane {
 
     private final Button btnStart = new Button("Uruchom 8 węzłów");
@@ -34,9 +34,35 @@ public class NetworkPane extends BorderPane {
     private final NodeServer[] nodes = new NodeServer[Graph.NODES];
     private boolean running = false;
 
+    private final TabPane rightTabs = new TabPane();
+    private final DecoderPane decoderPane = new DecoderPane();
+
     public NetworkPane() {
         setPadding(new Insets(12));
-        buildUi();
+
+        var top = new HBox(8, btnStart, btnStop);
+        top.setPadding(new Insets(0, 0, 12, 0));
+        setTop(top);
+
+        var left = buildSendControls();
+        setLeft(left);
+
+        log.setEditable(false);
+        log.setPrefColumnCount(60);
+        log.setPrefRowCount(22);
+        log.setStyle("-fx-font-family: 'Consolas','Courier New',monospace; -fx-font-size: 12px;");
+
+        var logBox = new VBox(8, new Label("Dziennik zdarzeń:"), log, btnClearLog);
+        var tabLog = new Tab("Dziennik", logBox); tabLog.setClosable(false);
+
+        var faultsPane = new FaultsPane(nodes);
+        var tabFaults = new Tab("Usterki w węzłach", faultsPane); tabFaults.setClosable(false);
+
+        var tabDecoder = new Tab("Dekoder (na węzłach docelowych)", decoderPane);
+        tabDecoder.setClosable(false);
+
+        rightTabs.getTabs().addAll(tabLog, tabFaults, tabDecoder);
+        setCenter(rightTabs);
 
         btnStart.setOnAction(e -> startAll());
         btnStop.setOnAction(e -> stopAll());
@@ -48,31 +74,18 @@ public class NetworkPane extends BorderPane {
         cbError.getItems().addAll(ErrorType.values());
         cbError.getSelectionModel().selectFirst();
 
-        // Polish UI
-        log.setEditable(false);
-        log.setPrefColumnCount(60);
-        log.setPrefRowCount(26);
-        log.setStyle("-fx-font-family: 'Consolas','Courier New',monospace; -fx-font-size: 12px;");
-        tfValue16.setPromptText("np. 0xBEEF lub 48879");
-        tfProb.setPromptText("0..1");
-
-        btnStop.setDisable(true);
-        setSendControlsDisabled(true);
-
         btnSendNoErr.setOnAction(e -> doSendNoErr());
         btnSendErr.setOnAction(e -> doSendErr());
         btnSendProb.setOnAction(e -> doSendProb());
         btnSendRand.setOnAction(e -> doSendRand());
+
+        btnStop.setDisable(true);
+        setSendControlsDisabled(true);
     }
 
-    private void buildUi() {
-        var top = new HBox(8, btnStart, btnStop);
-        top.setPadding(new Insets(0, 0, 12, 0));
-        setTop(top);
-
+    private VBox buildSendControls() {
         var grid = new GridPane();
-        grid.setHgap(8);
-        grid.setVgap(8);
+        grid.setHgap(8); grid.setVgap(8);
         int r = 0;
         grid.add(new Label("Węzeł wejściowy:"), 0, r); grid.add(cbEntry, 1, r++);
         grid.add(new Label("Cel:"),              0, r); grid.add(cbDst,   1, r++);
@@ -80,13 +93,13 @@ public class NetworkPane extends BorderPane {
         grid.add(new Label("Rodzaj usterki:"),   0, r); grid.add(cbError,  1, r++);
         grid.add(new Label("p (0..1):"),         0, r); grid.add(tfProb,   1, r++);
 
+        tfValue16.setPromptText("np. 0xBEEF lub 48879");
+        tfProb.setPromptText("0..1");
+
         var sendBox = new VBox(8, btnSendNoErr, btnSendErr, btnSendProb, btnSendRand);
         var left = new VBox(12, grid, sendBox);
         left.setPadding(new Insets(0, 12, 0, 0));
-        setLeft(left);
-
-        var right = new VBox(8, new Label("Dziennik zdarzeń:"), log, btnClearLog);
-        setCenter(right);
+        return left;
     }
 
     private void startAll() {
@@ -103,6 +116,7 @@ public class NetworkPane extends BorderPane {
                 }
                 @Override public void onDelivered(int nodeId, int srcId, int dstId, BitVector payload21) {
                     appendLog(String.format("Węzeł %d: DOSTARCZONO src=%d dst=%d payload=%s", nodeId, srcId, dstId, payload21));
+                    decoderPane.acceptDelivery(nodeId, srcId, payload21);
                 }
                 @Override public void onError(int nodeId, String message, Exception ex) {
                     appendLog(String.format("Węzeł %d — BŁĄD: %s (%s)", nodeId, message, ex != null ? ex.getMessage() : ""));
@@ -149,8 +163,6 @@ public class NetworkPane extends BorderPane {
         });
     }
 
-    // --- Wysyłka i pomocnicze ---
-
     private Integer parse16(String txt) {
         if (txt == null) return null;
         txt = txt.trim();
@@ -159,9 +171,7 @@ public class NetworkPane extends BorderPane {
             if (txt.startsWith("0x") || txt.startsWith("0X")) v = Integer.parseUnsignedInt(txt.substring(2), 16);
             else v = Integer.parseInt(txt);
             return ((v & ~0xFFFF) == 0) ? v : null;
-        } catch (Exception ex) {
-            return null;
-        }
+        } catch (Exception ex) { return null; }
     }
 
     private double parseProb(String txt) {
@@ -169,9 +179,7 @@ public class NetworkPane extends BorderPane {
             double p = Double.parseDouble(txt.trim());
             if (p < 0 || p > 1) throw new IllegalArgumentException();
             return p;
-        } catch (Exception ex) {
-            return Double.NaN;
-        }
+        } catch (Exception ex) { return Double.NaN; }
     }
 
     private NodeServer entryNode() { return nodes[cbEntry.getValue()]; }

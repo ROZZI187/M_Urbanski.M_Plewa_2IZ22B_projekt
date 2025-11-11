@@ -8,15 +8,16 @@ import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 
-/* Panel dekodera – oblicza syndrom, korekcję 1-bit i wyświetla dane 16-bit (dec/hex). */
+/* Panel dekodera - stałe szerokości, kopiowanie wiersza do schowka */
 public class DecoderPane extends BorderPane {
 
     private static final class Row {
-        final Label lastSrc = new Label("-");
-        final Label raw21   = new Label("-");
-        final Label syndrome = new Label("-");
-        final Label corrected = new Label("-");
-        final Label data16  = new Label("-");
+        final Label lastSrc = mkLabel();
+        final Label raw21   = mkLabel();
+        final Label syndrome = mkLabel();
+        final Label corrected = mkLabel();
+        final Label data16  = mkLabel();
+        final Button copyBtn = new Button("Kopiuj");
     }
 
     private final Row[] rows = new Row[Graph.NODES];
@@ -36,18 +37,28 @@ public class DecoderPane extends BorderPane {
         grid.add(labelBold("Syndrom"),          3, r);
         grid.add(labelBold("Skorygowana 21-bit"),4, r);
         grid.add(labelBold("Dane 16-bit"),      5, r);
+        grid.add(labelBold("Akcje"),            6, r);
         r++;
 
         for (int i = 0; i < Graph.NODES; i++, r++) {
             rows[i] = new Row();
             grid.add(new Label("Węzeł " + i), 0, r);
-            mono(rows[i].lastSrc); mono(rows[i].raw21);
-            mono(rows[i].syndrome); mono(rows[i].corrected); mono(rows[i].data16);
+
+            setMono(rows[i].lastSrc, 70);
+            setMono(rows[i].raw21,  210);
+            setMono(rows[i].syndrome, 70);
+            setMono(rows[i].corrected, 210);
+            setMono(rows[i].data16, 160);
+
             grid.add(rows[i].lastSrc,   1, r);
             grid.add(rows[i].raw21,     2, r);
             grid.add(rows[i].syndrome,  3, r);
             grid.add(rows[i].corrected, 4, r);
             grid.add(rows[i].data16,    5, r);
+            grid.add(rows[i].copyBtn,   6, r);
+
+            final int rowIdx = i;
+            rows[i].copyBtn.setOnAction(e -> copyRow(rowIdx));
         }
 
         var bottom = new HBox(8, btnClear);
@@ -57,6 +68,38 @@ public class DecoderPane extends BorderPane {
         setBottom(bottom);
 
         btnClear.setOnAction(e -> clearAll());
+    }
+
+    private static Label mkLabel() {
+        var l = new Label("-");
+        l.setStyle("-fx-font-family: 'Consolas','Courier New',monospace; -fx-font-size: 12px;");
+        return l;
+    }
+
+    private void setMono(Label l, double prefWidth) {
+        l.setMinWidth(prefWidth);
+        l.setPrefWidth(prefWidth);
+        l.setMaxWidth(Double.MAX_VALUE);
+    }
+
+    private Label labelBold(String s) {
+        var l = new Label(s);
+        l.setStyle("-fx-font-weight: bold;");
+        return l;
+    }
+
+    private void copyRow(int idx) {
+        if (idx < 0 || idx >= Graph.NODES) return;
+        var r = rows[idx];
+        String text = String.format(
+                "Wezel=%d | Zrodlo=%s | Raw=%s | Syndrom=%s | Skorygowana=%s | Dane=%s",
+                idx, r.lastSrc.getText(), r.raw21.getText(), r.syndrome.getText(),
+                r.corrected.getText(), r.data16.getText()
+        );
+        var cb = javafx.scene.input.Clipboard.getSystemClipboard();
+        var content = new javafx.scene.input.ClipboardContent();
+        content.putString(text);
+        cb.setContent(content);
     }
 
     private void clearAll() {
@@ -69,18 +112,6 @@ public class DecoderPane extends BorderPane {
         }
     }
 
-    private Label labelBold(String s) {
-        var l = new Label(s);
-        l.setStyle("-fx-font-weight: bold;");
-        return l;
-    }
-
-    private void mono(Labeled l) {
-        l.setStyle("-fx-font-family: 'Consolas','Courier New',monospace; -fx-font-size: 12px;");
-    }
-
-    /* aktualizuje wiersz dla węzła docelowego – liczymy syndrom, korygujemy,
-       wyciągamy 16-bit i pokazujemy w formacie dec/hex. */
     public void acceptDelivery(int dstNodeId, int srcId, BitVector payload21) {
         if (dstNodeId < 0 || dstNodeId >= Graph.NODES) return;
         Platform.runLater(() -> {
