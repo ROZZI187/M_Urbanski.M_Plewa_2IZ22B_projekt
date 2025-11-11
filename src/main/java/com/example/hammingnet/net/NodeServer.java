@@ -5,6 +5,7 @@ import com.example.hammingnet.core.ErrorInjector;
 
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
@@ -29,10 +30,15 @@ public class NodeServer implements AutoCloseable {
     private volatile FaultConfig faultConfig = FaultConfig.disabled();
     private final ErrorInjector injector = new ErrorInjector();
 
+    private volatile ServerSocket serverSocket;
+
     public NodeServer(int id, Graph graph) {
         if (id < 0 || id >= Graph.NODES) throw new IllegalArgumentException("node id out of range");
         this.id = id;
         this.graph = Objects.requireNonNull(graph, "graph");
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try { this.close(); } catch (Exception ignored) {}
+        }, "Node-" + id + "-shutdown"));
     }
 
     public void setListener(NodeEventListener l) { this.listener = l; }
@@ -51,18 +57,45 @@ public class NodeServer implements AutoCloseable {
     }
 
     private void acceptLoop() {
-        try (ServerSocket ss = new ServerSocket(graph.port(id))) {
+        try {
+            bindWithRecovery();
+            if (serverSocket == null) {
+                fireError("bind/listen failed", new IllegalStateException("no free port for node " + id));
+                running = false;
+                return;
+            }
             while (running) {
                 try {
-                    Socket s = ss.accept();
+                    Socket s = serverSocket.accept();
                     handleClientAsync(s);
+                } catch (java.net.SocketException se) {
+                    break;
                 } catch (Exception ex) {
                     fireError("accept failed", ex);
                 }
             }
         } catch (Exception e) {
             fireError("bind/listen failed", e);
+        } finally {
+            safeCloseServer();
         }
+    }
+
+    private void bindWithRecovery() {
+        for (int k = 0; k < graph.maxSteps() && running; k++) {
+            int candidate = graph.candidatePortFor(id, k);
+            try {
+                ServerSocket ss = new ServerSocket();
+                ss.setReuseAddress(true);
+                ss.bind(new InetSocketAddress("127.0.0.1", candidate), 50);
+                this.serverSocket = ss;
+                graph.setPort(id, candidate);
+                return;
+            } catch (Exception ignored) {
+                sleepQuiet(40);
+            }
+        }
+        this.serverSocket = null;
     }
 
     private void handleClientAsync(Socket s) {
@@ -89,7 +122,6 @@ public class NodeServer implements AutoCloseable {
             if (dst != id) {
                 int next = chooseNextHop(dst);
                 if (next >= 0) {
-                    //  serializacja po ewentualnych usterkach
                     byte[] outMsg = new byte[5];
                     outMsg[0] = (byte) (src & 0xFF);
                     outMsg[1] = (byte) (dst & 0xFF);
@@ -118,12 +150,20 @@ public class NodeServer implements AutoCloseable {
     }
 
     private void sendRaw(int toId, byte[] msg5) {
-        try (Socket s = new Socket("127.0.0.1", graph.port(toId));
-             OutputStream out = s.getOutputStream()) {
-            out.write(msg5);
-            out.flush();
-        } catch (Exception ex) {
-            fireError("sendRaw failed toId=" + toId, ex);
+        int port = graph.port(toId);
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try (Socket s = new Socket("127.0.0.1", port);
+                 OutputStream out = s.getOutputStream()) {
+                out.write(msg5);
+                out.flush();
+                return;
+            } catch (Exception ex) {
+                if (attempt == 3) {
+                    fireError("sendRaw failed toId=" + toId, ex);
+                } else {
+                    sleepQuiet(60);
+                }
+            }
         }
     }
 
@@ -171,6 +211,22 @@ public class NodeServer implements AutoCloseable {
     @Override
     public synchronized void close() {
         running = false;
-        if (acceptThread != null) acceptThread.interrupt();
+        safeCloseServer();
+        if (acceptThread != null) {
+            try { acceptThread.join(500); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+        }
+    }
+
+    private void safeCloseServer() {
+        try {
+            ServerSocket ss = this.serverSocket;
+            if (ss != null && !ss.isClosed()) ss.close();
+        } catch (Exception ignored) {}
+        this.serverSocket = null;
+        graph.clearPort(id);
+    }
+
+    private static void sleepQuiet(long ms) {
+        try { Thread.sleep(ms); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
     }
 }
