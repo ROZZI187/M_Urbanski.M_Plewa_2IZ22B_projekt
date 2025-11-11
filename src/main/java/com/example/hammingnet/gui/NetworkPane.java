@@ -128,6 +128,14 @@ public class NetworkPane extends BorderPane {
         btnStart.setDisable(true);
         btnStop.setDisable(false);
         setSendControlsDisabled(false);
+
+        StringBuilder sb = new StringBuilder("Porty węzłów: ");
+        for (int i = 0; i < Graph.NODES; i++) {
+            sb.append(i).append("→").append(graph.port(i));
+            if (i < Graph.NODES - 1) sb.append(", ");
+        }
+        appendLog(sb.toString());
+
         appendLog("Uruchomiono wszystkie węzły.");
     }
 
