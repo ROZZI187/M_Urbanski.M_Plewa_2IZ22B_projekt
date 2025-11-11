@@ -27,13 +27,17 @@ public final class FaultConfig {
     public Entry burst2() { return burst2; }
     public Entry drop()   { return drop;   }
 
-
     /*   To jest "symulacja" zachowania – nawet jeśli element "nie toleruje" rodzaju błędu,
-      i tak go wpuszczam */
+         i tak go wpuszczam */
     public void apply(BitVector frame21, ErrorInjector injector) {
-        if (flip.enabled)   injector.injectWithProbability(frame21, ErrorType.BIT_FLIP,   clamp(flip.p));
-        if (burst2.enabled) injector.injectWithProbability(frame21, ErrorType.BURST_2,    clamp(burst2.p));
-        if (drop.enabled)   injector.injectWithProbability(frame21, ErrorType.DROP_PACKET, clamp(drop.p));
+        try {
+            if (flip.enabled)   injector.injectWithProbability(frame21, ErrorType.BIT_FLIP,   clamp(flip.p));
+            if (burst2.enabled) injector.injectWithProbability(frame21, ErrorType.BURST_2,    clamp(burst2.p));
+            if (drop.enabled)   injector.injectWithProbability(frame21, ErrorType.DROP_PACKET, clamp(drop.p));
+        } catch (RuntimeException dropEx) {
+            // sygnalizujemy "drop" wyżej do NodeServer.handleClient()
+            throw dropEx;
+        }
     }
 
     private double clamp(double p) {

@@ -35,8 +35,8 @@ public final class ErrorInjector {
         frame.set(pos + 1, !frame.get(pos + 1));
     }
 
-    // "zgubienie" pakietu – przyjmujemy umowę, że wszystkie bity idą na 0.
+    // "zgubienie" pakietu – zamiast zerowania bitów, przerywamy transmisję
     private void dropPacket(BitVector frame) {
-        for (int i = 0; i < frame.size(); i++) frame.set(i, false);
+        throw new RuntimeException("Pakiet utracony");
     }
 }
