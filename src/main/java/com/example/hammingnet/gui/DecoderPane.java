@@ -1,14 +1,14 @@
 package com.example.hammingnet.gui;
 
 import com.example.hammingnet.core.BitVector;
+import com.example.hammingnet.core.HammingModel;
 import com.example.hammingnet.net.Graph;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 
-/* Panel dekodera – pokazuje ostatnią DOSTARCZONĄ ramkę dla każdego z 8 węzłów docelowych.
-   Na tym etapie zapisujemy surowe dane; logikę wyliczeń dodam później. */
+/* Panel dekodera – oblicza syndrom, korekcję 1-bit i wyświetla dane 16-bit (dec/hex). */
 public class DecoderPane extends BorderPane {
 
     private static final class Row {
@@ -21,6 +21,7 @@ public class DecoderPane extends BorderPane {
 
     private final Row[] rows = new Row[Graph.NODES];
     private final Button btnClear = new Button("Wyczyść tabelę");
+    private final HammingModel model = new HammingModel();
 
     public DecoderPane() {
         setPadding(new Insets(12));
@@ -78,18 +79,23 @@ public class DecoderPane extends BorderPane {
         l.setStyle("-fx-font-family: 'Consolas','Courier New',monospace; -fx-font-size: 12px;");
     }
 
-    /* wywołuj to z NetworkPane.onDelivered – aktualizuje wiersz docelowego węzła.
-       Na razie zapisujemy surową ramkę. Obliczenia dodam później */
+    /* aktualizuje wiersz dla węzła docelowego – liczymy syndrom, korygujemy,
+       wyciągamy 16-bit i pokazujemy w formacie dec/hex. */
     public void acceptDelivery(int dstNodeId, int srcId, BitVector payload21) {
         if (dstNodeId < 0 || dstNodeId >= Graph.NODES) return;
         Platform.runLater(() -> {
             var row = rows[dstNodeId];
             row.lastSrc.setText(Integer.toString(srcId));
             row.raw21.setText(payload21.toString());
-            // placeholdery – zostaną uzupełnione w 2/3
-            row.syndrome.setText("?");
-            row.corrected.setText("?");
-            row.data16.setText("?");
+
+            int s = model.computeSyndrome(payload21);
+            row.syndrome.setText(Integer.toString(s));
+
+            BitVector fixed = model.correctSingleError(payload21);
+            row.corrected.setText(fixed.toString());
+
+            int data = model.extractData(fixed);
+            row.data16.setText(String.format("dec=%d hex=0x%04X", data, data & 0xFFFF));
         });
     }
 }
