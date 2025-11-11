@@ -21,7 +21,6 @@ public class NetworkPane extends BorderPane {
     private final TextField tfValue16 = new TextField();
     private final ComboBox<ErrorType> cbError = new ComboBox<>();
     private final TextField tfProb = new TextField("0.10");
-
     private final Button btnSendNoErr = new Button("Wyślij (bez usterek)");
     private final Button btnSendErr   = new Button("Wyślij (z usterką)");
     private final Button btnSendProb  = new Button("Wyślij (z prawdopodobieństwem)");
